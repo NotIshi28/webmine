@@ -1,0 +1,211 @@
+<html>
+    <head>
+        <title>Minecraft-inspired 3D Environment with Day/Night Cycle</title>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+        <script>// Set up scene, camera, and renderer
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+document.body.appendChild(renderer.domElement);
+
+// Create floor
+const floorGeometry = new THREE.BoxGeometry(1, 1, 1);
+const floorMaterial = new THREE.MeshPhongMaterial({ color: 0x3cb80b });
+const floor = new THREE.Group();
+
+for (let x = -25; x < 25; x++) {
+    for (let z = -25; z < 25; z++) {
+        const cube = new THREE.Mesh(floorGeometry, floorMaterial.clone());
+        cube.position.set(x, -0.5, z);
+        cube.receiveShadow = true;
+        floor.add(cube);
+    }
+}
+
+scene.add(floor);
+
+// Add lighting
+const ambientLight = new THREE.AmbientLight(0xffffff, 0.3);
+scene.add(ambientLight);
+
+const directionalLight = new THREE.DirectionalLight(0xffffff, 0.7);
+directionalLight.position.set(0, 100, 0);
+directionalLight.castShadow = true;
+directionalLight.shadow.mapSize.width = 2048;
+directionalLight.shadow.mapSize.height = 2048;
+directionalLight.shadow.camera.near = 0.5;
+directionalLight.shadow.camera.far = 500;
+scene.add(directionalLight);
+
+// Add sky
+const skyGeometry = new THREE.SphereGeometry(500, 32, 32);
+const skyMaterial = new THREE.MeshBasicMaterial({ color: 0x87CEEB, side: THREE.BackSide });
+const sky = new THREE.Mesh(skyGeometry, skyMaterial);
+scene.add(sky);
+
+// Add clouds
+const cloudGeometry = new THREE.SphereGeometry(2, 32, 32);
+const cloudMaterial = new THREE.MeshPhongMaterial({ color: 0xFFFFFF, transparent: true, opacity: 0.7 });
+const clouds = new THREE.Group();
+
+for (let i = 0; i < 20; i++) {
+    const cloud = new THREE.Mesh(cloudGeometry, cloudMaterial);
+    cloud.position.set(
+        Math.random() * 100 - 50,
+        Math.random() * 10 + 20,
+        Math.random() * 100 - 50
+    );
+    cloud.scale.set(Math.random() + 1, 0.5, Math.random() + 1);
+    clouds.add(cloud);
+}
+
+scene.add(clouds);
+
+// Add sun
+const sunGeometry = new THREE.SphereGeometry(5, 32, 32);
+const sunMaterial = new THREE.MeshBasicMaterial({ color: 0xFFFF00 });
+const sun = new THREE.Mesh(sunGeometry, sunMaterial);
+sun.position.set(0, 100, 0);
+scene.add(sun);
+
+// Player physics
+const player = {
+    height: 1.8,
+    radius: 0.3,
+    position: new THREE.Vector3(0, 1, 0),
+    velocity: new THREE.Vector3(),
+    onGround: false,
+    jumping: false
+};
+
+// Set up camera position
+camera.position.y = player.height;
+
+// Raycaster for block selection
+const raycaster = new THREE.Raycaster();
+const mouse = new THREE.Vector2(0, 0);
+
+// Block in hand
+const blockInHand = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.2, 0.2), new THREE.MeshBasicMaterial({ color: 0xffffff }));
+blockInHand.position.set(0, 0, -0.3);
+hand.add(blockInHand);
+
+scene.add(camera);
+
+
+document.addEventListener('keydown', (event) => {
+    if (event.key.toLowerCase() in keys) {
+        keys[event.key.toLowerCase()] = true;
+    }
+    if (event.key === 'h') {
+        hudVisible = !hudVisible;
+        logVisible = !logVisible;
+        document.getElementById('info').style.display = hudVisible ? 'block' : 'none';
+        document.getElementById('log').style.display = logVisible ? 'block' : 'none';
+        document.getElementById('timeButtons').style.display = hudVisible ? 'flex' : 'none';
+        document.getElementById('saveLoadButtons').style.display = hudVisible ? 'flex' : 'none';
+    }
+    if (event.key === 'r') {
+        respawnPlayer();
+    }
+});
+
+document.addEventListener('keyup', (event) => {
+    if (event.key.toLowerCase() in keys) {
+        keys[event.key.toLowerCase()] = false;
+    }
+});
+
+// Create 3D cubes for hotbar
+const hotbarCubes = [];
+for (let i = 0; i < 9; i++) {
+    const slot = document.createElement('div');
+    slot.className = 'hotbar-slot';
+    if (i === 0) slot.classList.add('active');
+    
+    if (i < blockTypes.length) {
+        const miniRenderer = new THREE.WebGLRenderer({ alpha: true });
+        miniRenderer.setSize(40, 40);
+        const miniScene = new THREE.Scene();
+        const miniCamera = new THREE.PerspectiveCamera(75, 1, 0.1, 10);
+        miniCamera.position.z = 2;
+
+        let cube;
+        if (blockTypes[i].name === 'Torch') {
+            const torchGeometry = new THREE.CylinderGeometry(0.1, 0.1, 0.5, 8);
+            const torchMaterial = new THREE.MeshPhongMaterial({ color: 0x8B4513 });
+            cube = new THREE.Mesh(torchGeometry, torchMaterial);
+
+            const flameGeometry = new THREE.SphereGeometry(0.15, 8, 8);
+            const flameMaterial = new THREE.MeshBasicMaterial({ color: 0xFFA500 });
+            const flame = new THREE.Mesh(flameGeometry, flameMaterial);
+            flame.position.y = 0.3;
+            cube.add(flame);
+        } else {
+            cube = new THREE.Mesh(
+                new THREE.BoxGeometry(1, 1, 1),
+                new THREE.MeshPhongMaterial({ color: blockTypes[i].color })
+            );
+        }
+        miniScene.add(cube);
+
+        const light = new THREE.DirectionalLight(0xffffff, 1);
+        light.position.set(1, 1, 1);
+        miniScene.add(light);
+
+        miniScene.add(new THREE.AmbientLight(0x404040));
+
+        slot.appendChild(miniRenderer.domElement);
+        hotbarCubes.push({ cube, miniRenderer, miniScene, miniCamera });
+    }
+    
+    hotbar.appendChild(slot);
+}
+
+document.addEventListener('keydown', (event) => {
+    const key = parseInt(event.key);
+    if (key >= 1 && key <= 9) {
+        document.querySelectorAll('.hotbar-slot').forEach((slot, index) => {
+            slot.classList.toggle('active', index === key - 1);
+        });
+        activeHotbarSlot = key - 1;
+        updateBlockInHand();
+    }
+});
+
+function updateBlockInHand() {
+    if (activeHotbarSlot < blockTypes.length) {
+        const blockType = blockTypes[activeHotbarSlot];
+        if (blockType.name === 'Torch') {
+            blockInHand.geometry = new THREE.CylinderGeometry(0.05, 0.05, 0.25, 8);
+            const flameMaterial = new THREE.MeshBasicMaterial({ color: 0xFFA500 });
+            const flame = new THREE.Mesh(new THREE.SphereGeometry(0.075, 8, 8), flameMaterial);
+            flame.position.y = 0.15;
+            blockInHand.add(flame);
+        } else {
+            blockInHand.geometry = new THREE.BoxGeometry(0.2, 0.2, 0.2);
+            blockInHand.children = [];
+        }
+        blockInHand.material.color.setHex(blockType.color);
+        blockInHand.visible = true;
+    } else {
+        blockInHand.visible = false;
+    }
+}
+
+function checkCollision(position) {
+    for (const cube of floor.children) {
+        const dx = Math.abs(position.x - cube.position.x);
+        const dy = Math.abs(position.y - cube.position.y);
+        const dz = Math.abs(position.z - cube.position.z);
+
+        if (dx < (player.radius + 0.5) && dy < (player.height / 2 + 0.5) && dz < (player.radius + 0.5)){
+            return true;
+        }
+    }
+    return false;
+}
+</script></body></html>
