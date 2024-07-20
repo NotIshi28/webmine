@@ -413,5 +413,220 @@ document.addEventListener('contextmenu', (event) => {
 // Day/Night cycle
 let gameTime = 6.5 * 60; // Start at 6:30
 const day = 24 * 60; // 24 hours in minutes
+function updateDayNightCycle(delta) {
+    gameTime += delta * 2.2; // 2.2 times faster than real-time
+    if (gameTime >= day) {
+        gameTime -= day;
+    }
 
+    const hour = Math.floor(gameTime / 60);
+    const minute = Math.floor(gameTime % 60);
+
+    // Update sun position
+    const sunAngle = (gameTime / day) * Math.PI * 2 - Math.PI / 2;
+    sun.position.x = Math.cos(sunAngle) * 100;
+    sun.position.y = Math.sin(sunAngle) * 100;
+
+    // Update directional light
+    directionalLight.position.copy(sun.position);
+
+    // Update sky color
+    let skyColor, lightIntensity, ambientIntensity;
+
+    if (gameTime >= 5.5 * 60 && gameTime < 6.5 * 60) { // Morning
+        skyColor = new THREE.Color(0xFFA07A);
+        lightIntensity = 0.5;
+        ambientIntensity = 0.3;
+    } else if (gameTime >= 6.5 * 60 && gameTime < 17 * 60) { // Day
+        skyColor = new THREE.Color(0x87CEEB);
+        lightIntensity = 0.7;
+        ambientIntensity = 0.5;
+    } else if (gameTime >= 17 * 60 && gameTime < 20.33 * 60) { // Evening
+        skyColor = new THREE.Color(0xFFA500);
+        lightIntensity = 0.5;
+        ambientIntensity = 0.3;
+    } else if (gameTime >= 20.33 * 60 && gameTime < 20.67 * 60) { // Sunset
+        skyColor = new THREE.Color(0xFF4500);
+        lightIntensity = 0.3;
+        ambientIntensity = 0.2;
+    } else { // Night
+        skyColor = new THREE.Color(0x191970);
+        lightIntensity = 0.1;
+        ambientIntensity = 0.1;
+    }
+
+    sky.material.color.copy(skyColor);
+    directionalLight.intensity = lightIntensity;
+    ambientLight.intensity = ambientIntensity;
+
+    return `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+}
+
+// Time buttons functionality
+document.querySelectorAll('.timeButton').forEach(button => {
+    button.addEventListener('click', () => {
+        const [hours, minutes] = button.dataset.time.split(':').map(Number);
+        gameTime = hours * 60 + minutes;
+    });
+});
+
+// Save and Load World functionality
+const saveWorldButton = document.getElementById('saveWorldButton');
+const loadWorldButton = document.getElementById('loadWorldButton');
+const worldDataModal = document.getElementById('worldDataModal');
+const worldDataTextarea = document.getElementById('worldDataTextarea');
+const confirmLoadButton = document.getElementById('confirmLoadButton');
+const closeModalButton = document.querySelector('.close');
+
+saveWorldButton.addEventListener('click', saveWorld);
+loadWorldButton.addEventListener('click', () => worldDataModal.style.display = 'block');
+confirmLoadButton.addEventListener('click', loadWorld);
+closeModalButton.addEventListener('click', () => worldDataModal.style.display = 'none');
+
+function saveWorld() {
+    const worldData = [];
+    floor.children.forEach(block => {
+        if (block.userData.blockType) {
+            worldData.push(`${block.userData.blockType},${block.position.x},${block.position.y},${block.position.z}`);
+        }
+    });
+    const worldDataString = worldData.join(';');
+    worldDataTextarea.value = worldDataString;
+    worldDataModal.style.display = 'block';
+}
+
+function loadWorld() {
+    const worldDataString = worldDataTextarea.value;
+    const worldData = worldDataString.split(';');
+
+    // Clear existing blocks
+    floor.children = floor.children.filter(child => !child.userData.blockType);
+
+    worldData.forEach(blockData => {
+        const [typeId, x, y, z] = blockData.split(',').map(Number);
+        const blockType = blockTypes.find(type => type.id === typeId);
+        
+        if (blockType) {
+            let newBlock;
+            
+            if (blockType.name === 'Torch') {
+                const torchGeometry = new THREE.CylinderGeometry(0.1, 0.1, 0.5, 8);
+                const torchMaterial = new THREE.MeshPhongMaterial({ color: 0x8B4513 });
+                newBlock = new THREE.Mesh(torchGeometry, torchMaterial);
+
+                const flameGeometry = new THREE.SphereGeometry(0.15, 8, 8);
+                const flameMaterial = new THREE.MeshBasicMaterial({ color: 0xFFA500 });
+                const flame = new THREE.Mesh(flameGeometry, flameMaterial);
+                flame.position.y = 0.3;
+                newBlock.add(flame);
+
+                const torchLight = new THREE.PointLight(0xFFA500, 1, 10);
+                torchLight.position.set(0, 0.5, 0);
+                newBlock.add(torchLight);
+            } else {
+                newBlock = new THREE.Mesh(
+                    new THREE.BoxGeometry(1, 1, 1),
+                    new THREE.MeshPhongMaterial({ color: blockType.color })
+                );
+            }
+
+            newBlock.position.set(x, y, z);
+            newBlock.receiveShadow = true;
+            newBlock.userData.blockType = blockType.id;
+            floor.add(newBlock);
+        }
+    });
+
+    worldDataModal.style.display = 'none';
+}
+
+function animate() {
+    requestAnimationFrame(animate);
+
+    const delta = 1 / 60; // Assume 60 FPS for simplicity
+
+    updatePlayer(delta);
+
+    // Camera rotation
+    camera.rotation.order = 'YXZ';
+    camera.rotation.y = yaw;
+    camera.rotation.x = pitch;
+
+    // Raycasting
+    raycaster.setFromCamera(mouse, camera);
+    const intersects = raycaster.intersectObjects(floor.children);
+
+    // Reset all block colors
+    floor.children.forEach(cube => {
+        if (cube.material.emissive) {
+            cube.material.emissive.setHex(0x000000);
+        }
+    });
+
+    let pointingInfo = 'Pointing At Block: None';
+    let faceInfo = 'Face: None';
+
+    if (intersects.length > 0) {
+        const intersectedObject = intersects[0].object;
+        if (intersectedObject.material.emissive) {
+            intersectedObject.material.emissive.setHex(0x666666);
+        }
+
+        const blockPosition = intersectedObject.position;
+        pointingInfo = `Pointing At Block: X:${blockPosition.x.toFixed(0)} Y:${blockPosition.y.toFixed(0)} Z:${blockPosition.z.toFixed(0)}`;
+
+        const face = intersects[0].face;
+        if (face.normal.y === 1) faceInfo = 'Face: Top';
+        else if (face.normal.y === -1) faceInfo = 'Face: Bottom';
+        else if (face.normal.x === 1) faceInfo = 'Face: East';
+        else if (face.normal.x === -1) faceInfo = 'Face: West';
+        else if (face.normal.z === 1) faceInfo = 'Face: South';
+        else if (face.normal.z === -1) faceInfo = 'Face: North';
+    }
+
+    // Update FPS
+    updateFPS();
+
+    // Update day/night cycle
+    const currentTime = updateDayNightCycle(delta);
+
+    // Update info display
+    if (hudVisible) {
+        document.getElementById('info').innerHTML = `Controls: WASD to move, Space to jump, 1-9 to select hotbar slot, H to toggle HUD/Log, R to respawn<br>${pointingInfo}<br>${faceInfo}<br>Player Position: X:${player.position.x.toFixed(2)} Y:${player.position.y.toFixed(2)} Z:${player.position.z.toFixed(2)}<br>FPS: ${fps}<br>Time: ${currentTime}`;
+    }
+
+    // Update log display
+    document.getElementById('log').style.display = logVisible ? 'block' : 'none';
+
+    // Render hotbar cubes
+    hotbarCubes.forEach((item, index) => {
+        if (item) {
+            item.cube.rotation.x += 0.01;
+            item.cube.rotation.y += 0.01;
+            item.miniRenderer.render(item.miniScene, item.miniCamera);
+        }
+    });
+
+    // Move clouds
+    clouds.children.forEach(cloud => {
+        cloud.position.x += 0.01;
+        if (cloud.position.x > 50) {
+            cloud.position.x = -50;
+        }
+    });
+
+    renderer.render(scene, camera);
+}
+
+animate();
+
+// Initial block in hand update
+updateBlockInHand();
+
+// Window resize handler
+window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+});
 </script></body></html>
